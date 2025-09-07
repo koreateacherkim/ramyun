@@ -1,466 +1,340 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-// ────────────────────────────────────────────────────────────────────────────────
-// 기본 레시피 (이전 버전 + 정리)
-// ────────────────────────────────────────────────────────────────────────────────
-const BASE_RECIPES = {
-  "신라면": {
-    maker: "농심",
-    water: "550 ml",
-    steps: [
-      "물 550 ml 끓이기",
-      "면 넣고 분말스프·건더기 함께",
-      "3분 30초 끓인 뒤 계란/치즈 1분",
-      "대파·숙주·소시지 등 추가 추천 (진하게: 물 500 ml)",
-    ],
-    baseStages: [
-      { label: "면+스프 끓이기", seconds: 210 },
-      { label: "마무리 끓이기", seconds: 60 },
-    ],
-  },
-  "너구리": {
-    maker: "농심",
-    water: "550 ml",
-    steps: [
-      "면+스프 5분",
-      "어묵·해물·대파 추가",
-      "매운맛은 청양고추",
-    ],
-    baseStages: [{ label: "면+스프 끓이기", seconds: 300 }],
-  },
-  "짜파게티": {
-    maker: "농심",
-    water: "600 ml",
-    steps: [
-      "면 5분 삶기",
-      "물 8스푼 남기고 버린 뒤",
-      "유성스프+분말스프 비비기 (치즈/계란후라이 토핑)",
-    ],
-    baseStages: [{ label: "면 삶기", seconds: 300 }],
-  },
-  "짜왕": {
-    maker: "농심",
-    water: "포장 기준",
-    steps: ["포장 기준 면 삶기", "오일 넣고 비비기", "계란후라이·양파 볶음"],
-    baseStages: [{ label: "면 삶기(포장 기준)", seconds: 270 }],
-  },
-  "안성탕면": {
-    maker: "농심",
-    water: "550 ml",
-    steps: ["면+스프 4분", "(3:30 뒤 토핑)", "깻잎·대파·계란"],
-    baseStages: [{ label: "면+스프 끓이기", seconds: 240 }],
-  },
-  "불닭볶음면": {
-    maker: "삼양",
-    water: "끓는 물 600 ml",
-    steps: ["면 5분", "물 대부분 버림(2~8스푼 남김)", "액상소스 + 30초 볶기", "치즈 올려 녹이기"],
-    baseStages: [
-      { label: "면 삶기", seconds: 300 },
-      { label: "볶음/버무리기", seconds: 30 },
-    ],
-  },
-  "삼양라면": {
-    maker: "삼양",
-    water: "550 ml",
-    steps: ["분말스프 먼저", "면 3~4분", "파/버섯/계란"],
-    baseStages: [{ label: "면+스프 끓이기", seconds: 210 }],
-  },
-  "진라면": {
-    maker: "오뚜기",
-    water: "550 ml",
-    steps: ["건더기 먼저 우려내기", "분말스프·면 넣고 4분", "김치·대파·계란·만두"],
-    baseStages: [{ label: "면+스프 끓이기", seconds: 240 }],
-  },
-  "비빔면": {
-    maker: "팔도",
-    water: "500~600 ml",
-    steps: ["면 3분", "찬물 헹궈 물기 제거", "소스+오이+삶은계란", "물비빔 변형 가능"],
-    baseStages: [{ label: "면 삶기", seconds: 180 }],
-  },
-  "왕뚜껑(컵/봉지)": {
-    maker: "팔도",
-    water: "컵: 표시선",
-    steps: ["컵: 뜨거운 물 3~3.5분", "물 4스푼 남기고 버린 뒤 비비기(짜장형)", "봉지: 표기대로"],
-    baseStages: [{ label: "컵면 우려두기", seconds: 210 }],
-  },
-};
-
-const TOPPINGS = [
-  { key: "떡국떡", label: "떡국떡" },
-  { key: "파", label: "파" },
-  { key: "치즈", label: "치즈" },
-  { key: "계란", label: "계란" },
-];
-
-const EGG_STAGES = {
-  soft: { label: "계란 반숙(라면 위)", seconds: 45 },
-  hard: { label: "계란 완숙(라면 위)", seconds: 120 },
-};
-
-const fmt = (s) => {
-  const m = Math.floor(s / 60)
-    .toString()
-    .padStart(2, "0");
-  const sec = Math.floor(s % 60)
-    .toString()
-    .padStart(2, "0");
-  return `${m}:${sec}`;
-};
-
-// 간단한 효과음
-async function playTone(kind = "beep") {
-  try {
-    const Actx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new Actx();
-
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-
-    if (kind === "beep") {
-      o.type = "sine"; o.frequency.value = 880; g.gain.value = 0.05; o.start();
-      setTimeout(() => { o.stop(); ctx.close(); }, 160);
-    } else if (kind === "bell") {
-      o.type = "triangle"; g.gain.value = 0.06; o.frequency.value = 700; o.start();
-      setTimeout(() => (o.frequency.value = 1200), 120);
-      setTimeout(() => { o.stop(); ctx.close(); }, 340);
-    } else if (kind === "wood") {
-      o.type = "square"; g.gain.value = 0.05; o.frequency.value = 500; o.start();
-      setTimeout(() => { g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2) }, 50);
-      setTimeout(() => { o.stop(); ctx.close(); }, 260);
-    } else {
-      ctx.close();
-    }
-  } catch {}
-}
-
-function notify(text) {
-  try {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "granted") new Notification(text);
-  } catch {}
-}
-
-function requestNotifyPermission() {
-  try {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "default") Notification.requestPermission();
-  } catch {}
-}
-
-export default function App() {
-  // 로컬 저장소에서 커스텀 레시피 로드
-  const [custom, setCustom] = useState(() => {
-    try {
-      const raw = localStorage.getItem("ramen_custom_recipes");
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  const RECIPES = useMemo(() => ({ ...BASE_RECIPES, ...custom }), [custom]);
-
-  const ramenKeys = Object.keys(RECIPES);
-  const [chosen, setChosen] = useState(ramenKeys[0] || "신라면");
-  const [toppings, setToppings] = useState({});
-  const [eggType, setEggType] = useState("soft");
-
-  // 가열 옵션(물 끓는 시간)
-  const [preheatMode, setPreheatMode] = useState("없음");
-  const [preheatSec, setPreheatSec] = useState(0);
-
-  // 알림음 선택
-  const [sound, setSound] = useState("beep"); // beep | bell | wood | mute
-
-  // 타이머 상태
-  const [stageIdx, setStageIdx] = useState(0);
-  const [secondsLeft, setSecondsLeft] = useState(0);
-  const [running, setRunning] = useState(false);
-  const timerRef = useRef(null);
-
-  const stages = useMemo(() => {
-    const base = [];
-    if (preheatMode !== "없음" && preheatSec > 0) base.push({ label: `물 끓이기(${preheatMode})`, seconds: preheatSec });
-
-    base.push(...(RECIPES[chosen].baseStages || []));
-    if (toppings["계란"]) base.push(EGG_STAGES[eggType]);
-    return base;
-  }, [chosen, toppings, eggType, preheatMode, preheatSec, RECIPES]);
-
-  // 초기화
-  useEffect(() => { stop(); reset(); }, [chosen]);
-  useEffect(() => { reset(); }, [stages.length]);
-
-  const reset = () => {
-    setStageIdx(0);
-    setSecondsLeft(stages[0]?.seconds || 0);
-  };
-
-  const start = () => {
-    if (!stages.length) return;
-    requestNotifyPermission();
-    if (!running) {
-      setRunning(true);
-      if (!secondsLeft) setSecondsLeft(stages[stageIdx].seconds);
-      timerRef.current = setInterval(() => setSecondsLeft((s) => s - 1), 1000);
-    }
-  };
-
-  const stop = () => {
-    setRunning(false);
-    if (timerRef.current) clearInterval(timerRef.current);
-  };
-
-  // 단계 전환
-  useEffect(() => {
-    if (!running) return;
-    if (secondsLeft <= 0) {
-      const next = stageIdx + 1;
-      if (next < stages.length) {
-        setStageIdx(next);
-        setSecondsLeft(stages[next].seconds);
-        if (sound !== "mute") playTone(sound);
-        notify(`다음 단계: ${stages[next].label}`);
-      } else {
-        stop(); setSecondsLeft(0);
-        if (sound !== "mute") playTone("bell");
-        notify("라면 완성! 맛있게 드세요 🍜");
-      }
-    }
-  }, [secondsLeft, running, stageIdx, stages, sound]);
-
-  const recipe = RECIPES[chosen] || {};
-
-  // 커스텀 레시피 빌더 상태
-  const [newName, setNewName] = useState("");
-  const [newMaker, setNewMaker] = useState("");
-  const [newWater, setNewWater] = useState("");
-  const [newSteps, setNewSteps] = useState("");
-  const [newStages, setNewStages] = useState([{ label: "단계 1", seconds: 180 }]);
-
-  const addStageRow = () => setNewStages((arr) => [...arr, { label: `단계 ${arr.length + 1}`, seconds: 60 }]);
-  const removeStageRow = (i) => setNewStages((arr) => arr.filter((_, idx) => idx !== i));
-
-  const saveCustom = () => {
-    if (!newName.trim()) return alert("레시피 이름을 입력해 주세요.");
-    const obj = {
-      maker: newMaker || "커스텀",
-      water: newWater || "표기 기준",
-      steps: newSteps
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      baseStages: newStages.map((s) => ({ label: s.label || "단계", seconds: Math.max(1, Number(s.seconds) || 60) })),
-    };
-    const updated = { ...custom, [newName.trim()]: obj };
-    setCustom(updated);
-    try { localStorage.setItem("ramen_custom_recipes", JSON.stringify(updated)); } catch {}
-    setChosen(newName.trim());
-    setNewName(""); setNewMaker(""); setNewWater(""); setNewSteps(""); setNewStages([{ label: "단계 1", seconds: 180 }]);
-    alert("커스텀 레시피가 저장되었습니다.");
-  };
-
-  return (
-    <div className="min-h-screen w-full bg-gray-50 text-gray-900 p-6">
-      <div className="max-w-6xl mx-auto grid gap-6">
-        <header className="flex items-center justify-between">
-          <h1 className="text-2xl sm:text-3xl font-bold">🍜 라면 타이머 PRO</h1>
-          <div className="text-sm opacity-80">개발자: <b>가치있는미래교육연구소 대표 김병찬</b></div>
-        </header>
-
-        {/* 전체 레시피 요약 */}
-        <section className="bg-white rounded-2xl shadow p-4">
-          <details>
-            <summary className="cursor-pointer select-none font-semibold">대표 라면 10종 최적 레시피 요약</summary>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
-              {Object.entries(RECIPES).map(([k, v]) => (
-                <div key={k} className="border rounded-xl p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="font-bold">{k}</div>
-                    <div className="text-xs opacity-70">제조사: {v.maker} · 물: {v.water}</div>
-                  </div>
-                  <ul className="list-disc ml-5 text-sm space-y-1">
-                    {(v.steps || []).map((s, i) => <li key={i}>{s}</li>)}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </details>
-        </section>
-
-        {/* 컨트롤 + 타이머 */}
-        <section className="bg-white rounded-2xl shadow p-6 grid lg:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold mb-1">라면 선택</label>
-              <select className="w-full rounded-xl border p-2" value={chosen} onChange={(e) => setChosen(e.target.value)}>
-                {ramenKeys.map((k) => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="text-sm bg-gray-100 rounded-xl p-3">제조사: <b>{recipe.maker || "-"}</b></div>
-              <div className="text-sm bg-gray-100 rounded-xl p-3">권장 물: <b>{recipe.water || "-"}</b></div>
-            </div>
-
-            {/* 가열(물 끓이기) */}
-            <div className="space-y-2">
-              <div className="text-sm font-semibold">가열 시간(물 끓이기) 추가</div>
-              <div className="flex flex-wrap items-center gap-2">
-                {[
-                  { k: "없음", s: 0 },
-                  { k: "가스레인지(보통)", s: 180 },
-                  { k: "인덕션(빠름)", s: 90 },
-                ].map((o) => (
-                  <button
-                    key={o.k}
-                    className={`px-3 py-2 rounded-xl border ${preheatMode === o.k ? "bg-gray-900 text-white" : "bg-white"}`}
-                    onClick={() => { setPreheatMode(o.k); setPreheatSec(o.s); }}
-                  >{o.k}</button>
-                ))}
-                <div className="flex items-center gap-2 text-sm">
-                  <span>사용자 지정(초)</span>
-                  <input type="number" min="0" className="w-24 rounded-lg border p-2"
-                    value={preheatMode === "사용자 지정" ? preheatSec : 0}
-                    onChange={(e) => { setPreheatMode("사용자 지정"); setPreheatSec(Math.max(0, Number(e.target.value)||0)); }} />
-                </div>
-              </div>
-              <p className="text-xs text-gray-500">※ 가열 단계는 타이머의 첫 단계로 추가됩니다. 환경에 따라 실제 시간은 달라질 수 있어요.</p>
-            </div>
-
-            {/* 토핑 */}
-            <div>
-              <div className="text-sm font-semibold mb-1">토핑 선택</div>
-              <div className="flex flex-wrap gap-2">
-                {TOPPINGS.map((t) => (
-                  <label key={t.key} className={`cursor-pointer px-3 py-2 rounded-xl border ${toppings[t.key] ? "bg-gray-900 text-white" : "bg-white"}`}>
-                    <input type="checkbox" className="hidden" checked={!!toppings[t.key]}
-                      onChange={(e) => setToppings((prev) => ({ ...prev, [t.key]: e.target.checked }))} />
-                    {t.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* 계란 */}
-            <div className={`${toppings["계란"] ? "opacity-100" : "opacity-50"}`}>
-              <div className="text-sm font-semibold mb-1">계란 익힘</div>
-              <div className="flex gap-2">
-                {Object.entries({ soft: "반숙", hard: "완숙" }).map(([k, v]) => (
-                  <label key={k} className={`cursor-pointer px-3 py-2 rounded-xl border ${eggType === k ? "bg-gray-900 text-white" : "bg-white"}`}>
-                    <input type="radio" className="hidden" disabled={!toppings["계란"]} name="egg" checked={eggType === k} onChange={() => setEggType(k)} />
-                    {v}
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs mt-1">반숙 ≈ 45초 · 완숙 ≈ 2분 (라면 위에서 익히는 기준)</p>
-            </div>
-
-            {/* 알림 설정 */}
-            <div className="space-y-1">
-              <div className="text-sm font-semibold">알림음 / 브라우저 알림</div>
-              <div className="flex flex-wrap gap-2">
-                {["beep","bell","wood","mute"].map((k) => (
-                  <button key={k} className={`px-3 py-2 rounded-xl border ${sound===k?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setSound(k)}>
-                    {k === "beep" ? "삑" : k === "bell" ? "벨" : k === "wood" ? "우드" : "무음"}
-                  </button>
-                ))}
-                <button className="px-3 py-2 rounded-xl border" onClick={() => { requestNotifyPermission(); playTone(sound); }}>테스트</button>
-              </div>
-              <p className="text-xs text-gray-500">단계 전환·완료 시 효과음과 데스크톱 알림을 보냅니다(권한 필요).</p>
-            </div>
-          </div>
-
-          {/* 타이머 */}
-          <div className="flex flex-col items-center justify-center bg-gray-50 rounded-2xl p-6 border">
-            <div className="text-sm font-semibold mb-1">현재 단계</div>
-            <div className="text-xl md:text-2xl font-bold mb-3">{stages[stageIdx]?.label || "준비"}</div>
-            <div className="text-6xl font-extrabold tabular-nums">{fmt(Math.max(0, secondsLeft || 0))}</div>
-
-            <div className="w-full mt-4">
-              <div className="flex gap-2">
-                {stages.map((s, i) => (
-                  <div key={i} className={`h-2 flex-1 rounded-full ${i < stageIdx ? "bg-green-400" : i === stageIdx ? "bg-yellow-400" : "bg-gray-300"}`} title={`${s.label} · ${fmt(s.seconds)}`} />
-                ))}
-              </div>
-              <div className="flex justify-between text-xs mt-1">
-                {stages.map((s, i) => (
-                  <span key={i} className={`${i === stageIdx ? "font-semibold" : "opacity-70"}`}>{s.label}</span>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <button onClick={start} className="px-4 py-2 rounded-2xl bg-black text-white shadow">시작</button>
-              <button onClick={stop} className="px-4 py-2 rounded-2xl bg-white border shadow">일시정지</button>
-              <button onClick={() => { stop(); setStageIdx(0); setSecondsLeft(stages[0]?.seconds || 0); }} className="px-4 py-2 rounded-2xl bg-white border shadow">리셋</button>
-            </div>
-          </div>
-        </section>
-
-        {/* 선택한 레시피 상세 */}
-        <section className="bg-white rounded-2xl shadow p-6">
-          <h2 className="text-lg font-bold mb-2">{chosen} · 최적 레시피</h2>
-          <ul className="list-disc ml-5 space-y-1">
-            {(recipe.steps || []).map((s, i) => <li key={i}>{s}</li>)}
-          </ul>
-          <div className="mt-3 text-xs text-gray-500">표기 시간은 환경·기호에 따라 달라질 수 있습니다.</div>
-        </section>
-
-        {/* 커스텀 레시피 빌더 */}
-        <section className="bg-white rounded-2xl shadow p-6">
-          <h3 className="text-lg font-bold mb-3">➕ 커스텀 레시피 추가</h3>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-semibold">레시피 이름</label>
-                <input className="w-full border rounded-xl p-2" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="예) 우리집 라볶이"/>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-semibold">제조사/출처</label>
-                  <input className="w-full border rounded-xl p-2" value={newMaker} onChange={(e)=>setNewMaker(e.target.value)} placeholder="예) 집 레시피"/>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold">권장 물</label>
-                  <input className="w-full border rounded-xl p-2" value={newWater} onChange={(e)=>setNewWater(e.target.value)} placeholder="예) 500 ml"/>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-semibold">레시피 설명(한 줄당 1항목)</label>
-                <textarea className="w-full border rounded-xl p-2 min-h-[120px]" value={newSteps} onChange={(e)=>setNewSteps(e.target.value)} placeholder={"예) 면 3분 삶기\n예) 소스 넣고 30초 버무리기"}/>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold">타이머 단계</span>
-                <button className="px-3 py-1 rounded-lg border" onClick={addStageRow}>단계 추가</button>
-              </div>
-              <div className="space-y-2">
-                {newStages.map((st, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <input className="col-span-7 border rounded-xl p-2" value={st.label}
-                      onChange={(e)=> setNewStages((arr)=> arr.map((x,idx)=> idx===i? {...x, label:e.target.value}:x))} />
-                    <div className="col-span-4 flex items-center gap-2">
-                      <span className="text-xs">초</span>
-                      <input type="number" min="1" className="flex-1 border rounded-xl p-2" value={st.seconds}
-                        onChange={(e)=> setNewStages((arr)=> arr.map((x,idx)=> idx===i? {...x, seconds:Number(e.target.value)||60}:x))} />
-                    </div>
-                    <button className="col-span-1 px-2 py-2 rounded-lg border" onClick={()=>removeStageRow(i)}>−</button>
-                  </div>
-                ))}
-              </div>
-              <button className="w-full px-4 py-2 rounded-xl bg-black text-white" onClick={saveCustom}>저장</button>
-              <p className="text-xs text-gray-500">저장된 커스텀 레시피는 브라우저에 보관되어 다음에도 사용할 수 있어요.</p>
-            </div>
-          </div>
-        </section>
-
-        <footer className="text-center text-xs text-gray-500 pb-6">© {new Date().getFullYear()} 가치있는미래교육연구소 · 개발: 김병찬</footer>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>🍜 라면 타이머 PRO – 단일 HTML</title>
+<style>
+  :root{
+    --bg:#f7f7fb;--card:#fff;--ink:#111;--muted:#6b7280;--ring:#e5e7eb;--brand:#111827;
+    --y:#fde68a;--g:#86efac;--gray:#d1d5db
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
+  .wrap{max-width:1120px;margin:0 auto;padding:24px}
+  h1{font-size:clamp(22px,2.5vw,32px);margin:0 0 8px;font-weight:800}
+  .sub{font-size:12px;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--ring);border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+  .p4{padding:16px}.p6{padding:24px}.grid{display:grid;gap:16px}
+  @media(min-width:980px){.two{grid-template-columns:1fr 1fr}}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .btn{border:1px solid var(--ring);background:#fff;border-radius:12px;padding:8px 12px;cursor:pointer}
+  .btn.primary{background:var(--brand);color:#fff}
+  .btn.ghost{background:#fff}
+  .btn[aria-pressed="true"]{background:var(--brand);color:#fff}
+  input,select,textarea{border:1px solid var(--ring);border-radius:12px;padding:10px 12px;width:100%;background:#fff}
+  .tag{border:1px solid var(--ring);border-radius:12px;padding:8px 12px;background:#fff;cursor:pointer}
+  .tag.active{background:var(--brand);color:#fff}
+  .muted{color:var(--muted);font-size:12px}
+  .timer{display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--ring);border-radius:16px;background:#fafafa}
+  .time{font-weight:900;font-size:64px;letter-spacing:1px}
+  .stage{font-weight:800;font-size:20px;margin-bottom:8px}
+  .bar{display:flex;gap:8px;margin-top:16px}
+  .dot{height:8px;flex:1;border-radius:999px;background:var(--gray)}
+  .dot.past{background:var(--g)}.dot.cur{background:var(--y)}
+  details summary{cursor:pointer;font-weight:700}
+  .tbl{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:700px){.tbl{grid-template-columns:1fr 1fr}}
+  .k{font-weight:700}
+  footer{color:var(--muted);font-size:12px;text-align:center;padding:24px 0}
+</style>
+</head>
+<body>
+  <div class="wrap grid">
+    <header class="row" style="justify-content:space-between">
+      <div>
+        <h1>🍜 라면 타이머 PRO</h1>
+        <div class="sub">대표 10종 최적 레시피 · 단계별 타이머 · 가열시간 · 알림 · 커스텀 레시피</div>
       </div>
-    </div>
-  );
+      <div class="sub">개발자: <b>가치있는미래교육연구소 대표 김병찬</b></div>
+    </header>
+
+    <!-- 레시피 요약 -->
+    <section class="card p4">
+      <details>
+        <summary>대표 라면 10종 최적 레시피 요약 보기</summary>
+        <div id="recipeSummary" class="tbl" style="margin-top:12px"></div>
+      </details>
+    </section>
+
+    <!-- 컨트롤 & 타이머 -->
+    <section class="card p6 grid two">
+      <div class="grid" id="controls">
+        <div>
+          <label class="k">라면 선택</label>
+          <select id="ramenSelect"></select>
+        </div>
+        <div class="grid" style="grid-template-columns:1fr 1fr">
+          <div class="p4 card" style="padding:12px"><span class="muted">제조사</span><div id="maker" class="k"></div></div>
+          <div class="p4 card" style="padding:12px"><span class="muted">권장 물</span><div id="water" class="k"></div></div>
+        </div>
+
+        <div class="grid">
+          <div class="k">가열 시간(물 끓이기) 추가</div>
+          <div class="row">
+            <button class="btn" data-preheat="없음" data-sec="0">없음</button>
+            <button class="btn" data-preheat="가스레인지(보통)" data-sec="180">가스레인지(보통)</button>
+            <button class="btn" data-preheat="인덕션(빠름)" data-sec="90">인덕션(빠름)</button>
+            <span class="muted">사용자 지정(초)</span>
+            <input id="preheatCustom" type="number" min="0" value="0" style="width:96px"/>
+          </div>
+          <div class="muted">가열 단계는 타이머의 첫 단계로 추가됩니다(환경별 편차 존재).</div>
+        </div>
+
+        <div>
+          <div class="k">토핑 선택</div>
+          <div id="toppings" class="row"></div>
+        </div>
+
+        <div id="eggBox" class="muted">
+          <div class="k">계란 익힘</div>
+          <label class="tag" style="display:inline-block"><input type="radio" name="egg" value="soft"> 반숙(≈45초)</label>
+          <label class="tag" style="display:inline-block"><input type="radio" name="egg" value="hard"> 완숙(≈2분)</label>
+        </div>
+
+        <div class="grid">
+          <div class="k">알림음 / 브라우저 알림</div>
+          <div class="row">
+            <button class="btn" data-sound="beep">삑</button>
+            <button class="btn" data-sound="bell">벨</button>
+            <button class="btn" data-sound="wood">우드</button>
+            <button class="btn" data-sound="mute">무음</button>
+            <button class="btn" id="testSound">테스트</button>
+          </div>
+          <div class="muted">단계 전환/완료 시 효과음과 데스크톱 알림(권한 필요)을 보냅니다.</div>
+        </div>
+      </div>
+
+      <div class="timer p6">
+        <div class="muted">현재 단계</div>
+        <div class="stage" id="stageLabel">준비</div>
+        <div class="time" id="time">00:00</div>
+        <div class="bar" id="progress"></div>
+        <div class="row" style="margin-top:16px">
+          <button id="start" class="btn primary">시작</button>
+          <button id="pause" class="btn">일시정지</button>
+          <button id="reset" class="btn">리셋</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 선택 레시피 상세 -->
+    <section class="card p6">
+      <h3 class="k" id="detailTitle"></h3>
+      <ul id="detailList" style="margin-top:8px"></ul>
+      <div class="muted" style="margin-top:8px">표기 시간은 환경·기호에 따라 달라질 수 있습니다.</div>
+    </section>
+
+    <!-- 커스텀 레시피 빌더 -->
+    <section class="card p6">
+      <h3 class="k">➕ 커스텀 레시피 추가</h3>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:16px">
+        <div class="grid">
+          <label class="k">레시피 이름</label>
+          <input id="cName" placeholder="예) 우리집 라볶이"/>
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <label class="k">제조사/출처</label>
+              <input id="cMaker" placeholder="예) 집 레시피"/>
+            </div>
+            <div>
+              <label class="k">권장 물</label>
+              <input id="cWater" placeholder="예) 500 ml"/>
+            </div>
+          </div>
+          <label class="k">레시피 설명(한 줄당 1항목)</label>
+          <textarea id="cSteps" rows="6" placeholder="예) 면 3분 삶기&#10;예) 소스 넣고 30초 버무리기"></textarea>
+        </div>
+        <div class="grid">
+          <div class="row" style="justify-content:space-between"><span class="k">타이머 단계</span><button id="addStage" class="btn">단계 추가</button></div>
+          <div id="stageRows" class="grid"></div>
+          <button id="saveCustom" class="btn primary">저장</button>
+          <div class="muted">저장된 커스텀 레시피는 브라우저(LocalStorage)에 보관됩니다.</div>
+        </div>
+      </div>
+    </section>
+
+    <footer>© <span id="y"></span> 가치있는미래교육연구소 · 개발: 김병찬</footer>
+  </div>
+
+<script>
+// ===== 데이터 =====
+const BASE_RECIPES = {
+  "신라면":{maker:"농심",water:"550 ml",steps:["물 550 ml 끓이기","면+분말스프·건더기","3분 30초 끓인 뒤 계란/치즈 1분","대파·숙주 등 추가(진하게: 물 500 ml)"],baseStages:[{label:"면+스프 끓이기",seconds:210},{label:"마무리 끓이기",seconds:60}]},
+  "너구리":{maker:"농심",water:"550 ml",steps:["면+스프 5분","어묵·해물·대파","매운맛은 청양고추"],baseStages:[{label:"면+스프 끓이기",seconds:300}]},
+  "짜파게티":{maker:"농심",water:"600 ml",steps:["면 5분 삶기","물 8스푼 남기고 버리기","유성스프+분말스프 비비기 (치즈/계란후라이)"],baseStages:[{label:"면 삶기",seconds:300}]},
+  "짜왕":{maker:"농심",water:"포장 기준",steps:["포장 기준 면 삶기","오일 넣고 비비기","계란후라이·양파 볶음"],baseStages:[{label:"면 삶기(포장 기준)",seconds:270}]},
+  "안성탕면":{maker:"농심",water:"550 ml",steps:["면+스프 4분","(3:30 뒤 토핑)","깻잎·대파·계란"],baseStages:[{label:"면+스프 끓이기",seconds:240}]},
+  "불닭볶음면":{maker:"삼양",water:"끓는 물 600 ml",steps:["면 5분","물 대부분 버림(2~8스푼 남김)","액상소스 + 30초 볶기","치즈 올려 녹이기"],baseStages:[{label:"면 삶기",seconds:300},{label:"볶음/버무리기",seconds:30}]},
+  "삼양라면":{maker:"삼양",water:"550 ml",steps:["분말스프 먼저","면 3~4분","파/버섯/계란"],baseStages:[{label:"면+스프 끓이기",seconds:210}]},
+  "진라면":{maker:"오뚜기",water:"550 ml",steps:["건더기 먼저 우려내기","분말스프·면 4분","김치·대파·계란·만두"],baseStages:[{label:"면+스프 끓이기",seconds:240}]},
+  "비빔면":{maker:"팔도",water:"500~600 ml",steps:["면 3분","찬물 헹궈 물기 제거","소스+오이+삶은계란","물비빔 변형"],baseStages:[{label:"면 삶기",seconds:180}]},
+  "왕뚜껑(컵/봉지)":{maker:"팔도",water:"컵: 표시선",steps:["컵: 뜨거운 물 3~3.5분","물 4스푼 남기고 버리고 비비기(짜장형)","봉지: 표기대로"],baseStages:[{label:"컵면 우려두기",seconds:210}]}
+};
+const TOPPINGS=["떡국떡","파","치즈","계란"];
+const EGG_STAGES={soft:{label:"계란 반숙(라면 위)",seconds:45},hard:{label:"계란 완숙(라면 위)",seconds:120}};
+
+// ===== 상태 =====
+let custom = JSON.parse(localStorage.getItem("ramen_custom_recipes")||"{}");
+let RECIPES = {...BASE_RECIPES, ...custom};
+let chosen = Object.keys(RECIPES)[0] || "신라면";
+let toppingsSel = {};
+let eggType = "soft";
+let preheatMode = "없음"; let preheatSec = 0;
+let sound = "beep"; // beep|bell|wood|mute
+let stages = []; let stageIdx = 0; let secondsLeft = 0; let running=false; let interval=null;
+
+// ===== DOM 참조 =====
+const $select = document.getElementById('ramenSelect');
+const $maker = document.getElementById('maker');
+const $water = document.getElementById('water');
+const $detailTitle = document.getElementById('detailTitle');
+const $detailList = document.getElementById('detailList');
+const $stageLabel = document.getElementById('stageLabel');
+const $time = document.getElementById('time');
+const $bar = document.getElementById('progress');
+const $toppings = document.getElementById('toppings');
+const $eggBox = document.getElementById('eggBox');
+const $preheatCustom = document.getElementById('preheatCustom');
+const $summary = document.getElementById('recipeSummary');
+
+// ===== 유틸 =====
+const fmt = s=>{s=Math.max(0,s|0);const m=String((s/60)|0).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return `${m}:${sec}`};
+function renderSummary(){
+  $summary.innerHTML = Object.entries(RECIPES).map(([k,v])=>`
+    <div class="card p4">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px">
+        <div class="k">${k}</div>
+        <div class="muted">제조사: ${v.maker} · 물: ${v.water}</div>
+      </div>
+      <ul style="margin:0;padding-left:18px">${(v.steps||[]).map(s=>`<li>${s}</li>`).join('')}</ul>
+    </div>`).join('');
 }
+function renderSelect(){
+  $select.innerHTML = Object.keys(RECIPES).map(k=>`<option value="${k}">${k}</option>`).join('');
+  $select.value = chosen;
+}
+function renderToppings(){
+  $toppings.innerHTML = TOPPINGS.map(t=>{
+    const active = !!toppingsSel[t];
+    return `<label class="tag ${active?'active':''}"><input type="checkbox" ${active?'checked':''} data-top="${t}" style="display:none"> ${t}</label>`;
+  }).join('');
+}
+function renderEggBox(){
+  $eggBox.style.opacity = toppingsSel['계란']? '1' : '.5';
+  $eggBox.querySelectorAll('input[name="egg"]').forEach(r=>{ r.checked = (r.value===eggType); r.disabled = !toppingsSel['계란']; });
+}
+function buildStages(){
+  stages=[];
+  if(preheatMode!=="없음" && preheatSec>0) stages.push({label:`물 끓이기(${preheatMode})`,seconds:preheatSec});
+  stages.push(...(RECIPES[chosen].baseStages||[]));
+  if(toppingsSel['계란']) stages.push(EGG_STAGES[eggType]);
+}
+function reset(){
+  stageIdx=0; secondsLeft=stages[0]?.seconds||0; updateTimerUI();
+}
+function updateTimerUI(){
+  $stageLabel.textContent = stages[stageIdx]?.label || '준비';
+  $time.textContent = fmt(secondsLeft||0);
+  $bar.innerHTML = stages.map((s,i)=>`<div class="dot ${i<stageIdx?'past':i===stageIdx?'cur':''}" title="${s.label} · ${fmt(s.seconds)}"></div>`).join('');
+}
+function updateRecipePanel(){
+  const r = RECIPES[chosen];
+  $maker.textContent = r.maker || '-';
+  $water.textContent = r.water || '-';
+  $detailTitle.textContent = `${chosen} · 최적 레시피`;
+  $detailList.innerHTML = (r.steps||[]).map(s=>`<li>${s}</li>`).join('');
+}
+function playTone(kind='beep'){
+  if(kind==='mute') return;
+  try{
+    const Actx = window.AudioContext||window.webkitAudioContext; const ctx = new Actx();
+    const o = ctx.createOscillator(); const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination);
+    if(kind==='beep'){o.type='sine'; o.frequency.value=880; g.gain.value=.05; o.start(); setTimeout(()=>{o.stop();ctx.close();},160)}
+    if(kind==='bell'){o.type='triangle'; g.gain.value=.06; o.frequency.value=700; o.start(); setTimeout(()=>o.frequency.value=1200,120); setTimeout(()=>{o.stop();ctx.close();},340)}
+    if(kind==='wood'){o.type='square'; g.gain.value=.05; o.frequency.value=500; o.start(); setTimeout(()=>g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.2),50); setTimeout(()=>{o.stop();ctx.close();},260)}
+  }catch{}
+}
+function notify(text){
+  try{ if(!('Notification' in window))return; if(Notification.permission==='granted') new Notification(text);}catch{}
+}
+function reqNotify(){ try{ if(!('Notification' in window))return; if(Notification.permission==='default') Notification.requestPermission(); }catch{}
+}
+
+// ===== 초기 렌더 =====
+renderSummary();
+renderSelect();
+renderToppings();
+renderEggBox();
+buildStages();
+reset();
+updateRecipePanel();
+
+document.getElementById('y').textContent = new Date().getFullYear();
+
+// ===== 이벤트 바인딩 =====
+$select.addEventListener('change',e=>{chosen=e.target.value; running&&pause(); buildStages(); reset(); updateRecipePanel();});
+
+// 가열 버튼
+Array.from(document.querySelectorAll('[data-preheat]')).forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    Array.from(document.querySelectorAll('[data-preheat]')).forEach(b=>b.setAttribute('aria-pressed','false'));
+    btn.setAttribute('aria-pressed','true');
+    preheatMode=btn.dataset.preheat; preheatSec=Number(btn.dataset.sec||0); buildStages(); reset();
+  });
+});
+$preheatCustom.addEventListener('input',e=>{ preheatMode='사용자 지정'; preheatSec=Math.max(0, Number(e.target.value)||0); buildStages(); reset(); });
+
+// 토핑
+$toppings.addEventListener('click',e=>{
+  const inp = e.target.closest('label')?.querySelector('input[data-top]');
+  if(!inp) return; inp.checked=!inp.checked; toppingsSel[inp.dataset.top]=inp.checked; renderToppings(); renderEggBox(); buildStages(); reset();
+});
+
+// 계란
+$eggBox.addEventListener('change',e=>{ if(e.target.name==='egg'){ eggType=e.target.value; buildStages(); reset(); }});
+
+// 사운드
+Array.from(document.querySelectorAll('[data-sound]')).forEach(btn=>{
+  btn.addEventListener('click',()=>{ Array.from(document.querySelectorAll('[data-sound]')).forEach(b=>b.setAttribute('aria-pressed','false')); btn.setAttribute('aria-pressed','true'); sound=btn.dataset.sound; });
+});
+
+document.getElementById('testSound').addEventListener('click',()=>{ reqNotify(); playTone(sound); });
+
+// 타이머
+function start(){ if(!stages.length) return; reqNotify(); if(running) return; running=true; if(!secondsLeft) secondsLeft=stages[stageIdx].seconds; clearInterval(interval); interval=setInterval(()=>{ secondsLeft--; if(secondsLeft<=0){ nextStage(); } updateTimerUI(); },1000);} 
+function pause(){ running=false; clearInterval(interval);} 
+function nextStage(){ const next=stageIdx+1; if(next<stages.length){ stageIdx=next; secondsLeft=stages[next].seconds; playTone(sound); notify('다음 단계: '+stages[next].label);} else { pause(); secondsLeft=0; playTone('bell'); notify('라면 완성! 맛있게 드세요 🍜'); }}
+
+document.getElementById('start').addEventListener('click',start);
+document.getElementById('pause').addEventListener('click',pause);
+document.getElementById('reset').addEventListener('click',()=>{ pause(); buildStages(); reset(); });
+
+// ===== 커스텀 레시피 빌더 =====
+const $cName=document.getElementById('cName');
+const $cMaker=document.getElementById('cMaker');
+const $cWater=document.getElementById('cWater');
+const $cSteps=document.getElementById('cSteps');
+const $rows=document.getElementById('stageRows');
+const $add=document.getElementById('addStage');
+const $save=document.getElementById('saveCustom');
+
+function rowTmpl(i,label='단계 '+(i+1),sec=60){return `<div class="row"><input data-lab placeholder="단계 라벨" value="${label}"/><input type="number" min="1" data-sec value="${sec}" style="width:120px"><button class="btn" data-del>−</button></div>`}
+function renderRows(){ if(!$rows.children.length) $rows.insertAdjacentHTML('beforeend', rowTmpl(0,'단계 1',180)); }
+renderRows();
+$add.addEventListener('click',()=>{ $rows.insertAdjacentHTML('beforeend', rowTmpl($rows.children.length)); });
+$rows.addEventListener('click',e=>{ if(e.target.hasAttribute('data-del')) e.target.parentElement.remove(); });
+
+$save.addEventListener('click',()=>{
+  const name = $cName.value.trim(); if(!name) return alert('레시피 이름을 입력하세요.');
+  const maker = $cMaker.value.trim()||'커스텀'; const water = $cWater.value.trim()||'표기 기준';
+  const steps = $cSteps.value.split(/\n/).map(s=>s.trim()).filter(Boolean);
+  const stgs = Array.from($rows.querySelectorAll('.row')).map(r=>({ label:r.querySelector('[data-lab]').value||'단계', seconds:Math.max(1, Number(r.querySelector('[data-sec]').value)||60) }));
+  custom[name]={ maker, water, steps, baseStages: stgs };
+  localStorage.setItem('ramen_custom_recipes', JSON.stringify(custom));
+  RECIPES = {...BASE_RECIPES, ...custom};
+  chosen = name; renderSummary(); renderSelect(); updateRecipePanel(); buildStages(); reset(); alert('커스텀 레시피 저장 완료!');
+  $cName.value=''; $cMaker.value=''; $cWater.value=''; $cSteps.value=''; $rows.innerHTML=''; renderRows();
+});
+</script>
+</body>
+</html>
